@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 // ✅ API KEY GEMINI YANG BENAR-BENAR WORK
 const GEMINI_API_KEY = "AIzaSyDnDfCbFNM3Iz7iKsu6o_oyzKl_smxRyeI";
 const GEMINI_MODELS = [
-    "gemini-1.5-flash",
+    "gemini-2.0-flash",
     "gemini-1.0-pro"
 ];
 
@@ -89,8 +89,8 @@ function tryAllModels(prompt, modelIndex, resolve, reject) {
     });
 
     const options = {
-        hostname: 'generativelanguage.googleapis.com',
-        path: `/v1beta/models/${currentModel}:generateContent?key=${GEMINI_API_KEY}`,
+        hostname: 'https://generativelanguage.googleapis.com}',
+        path: `/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY',
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
