@@ -1,5 +1,5 @@
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 const path = require('path');
 const cors = require('cors');
@@ -11,7 +11,6 @@ const PORT = process.env.PORT || 3000;
 
 // ✅ API KEY GEMINI YANG BENAR-BENAR WORK
 const GEMINI_API_KEY = "AIzaSyDnDfCbFNM3Iz7iKsu6o_oyzKl_smxRyeI";
-// ✅ MODEL GEMINI YANG WORK
 const GEMINI_MODELS = [
     "gemini-1.5-flash",
     "gemini-1.0-pro"
@@ -48,12 +47,6 @@ const HUTAO_CONFIG = {
 6. Sesekali selipkan humor khas Hu Tao tentang "pelanggan pemakaman"
 7. Respons harus hangat dan personal seolah sedang berbicara dengan teman dekat
 
-**Contoh gaya bicara:**
-- "Hehe~ sayang mau tanya apa nih? 💞"
-- "Wah, pertanyaan yang bagus sekali dek! ✨ Aku jelasin ya..."
-- "Ehe~ itu mudah banget kok sayang! 🌸 Begini caranya..."
-- "Aduh, kamu manis banget sampe Hu Tao mau peluk nih! 🥰"
-
 Sekarang jawab pertanyaan user dengan gaya Hu Tao yang ceria dan penuh kasih sayang!`,
     greeting: "Hehe~ halo sayang~ aku Hu Tao 💞\nSiapa yang kuterangi harinya hari ini~?",
     creatorResponse: `Aww~ kamu nanya siapa yang buat aku? 🥰
@@ -70,7 +63,6 @@ _Kalau mau kenal lebih dekat sama Satria, coba ketik /support ya sayang~ 😘_`
 // ✅ FUNGSI CALL GEMINI AI YANG 100% WORK
 async function callGeminiAI(prompt) {
     return new Promise((resolve, reject) => {
-        // Coba semua model sampai ada yang work
         tryAllModels(prompt, 0, resolve, reject);
     });
 }
@@ -191,7 +183,7 @@ Dukunganmu sangat berarti untuk pengembangan bot ini! ✨
 _Dibuat dengan ❤️ oleh Satria Developer_`;
 }
 
-// API Routes
+// ✅ FIXED PAIRING SYSTEM - HANYA PAKAI QR CODE
 app.post('/api/pair/qr', async (req, res) => {
     try {
         const sessionId = 'hutao-' + Date.now();
@@ -203,7 +195,7 @@ app.post('/api/pair/qr', async (req, res) => {
         }
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        const { version } = await fetchLatestWaWebVersion();
+        const { version } = await fetchLatestBaileysVersion();
         
         const sock = makeWASocket({
             auth: state,
@@ -223,6 +215,7 @@ app.post('/api/pair/qr', async (req, res) => {
             
             if (qr && !qrCode) {
                 qrCode = qr;
+                console.log('📱 QR Code generated for session:', sessionId);
                 activeConnections.set(sessionId, { 
                     sock, 
                     status: 'qr_generated',
@@ -232,29 +225,39 @@ app.post('/api/pair/qr', async (req, res) => {
             
             if (connection === 'open') {
                 isConnected = true;
+                console.log('✅ WhatsApp connected for session:', sessionId);
                 activeConnections.set(sessionId, { 
                     sock, 
                     status: 'connected',
                     user: sock.user
                 });
-                console.log('✅ WhatsApp connected for session:', sessionId);
                 
                 // Setup message handler untuk Hu Tao
                 setupHuTaoMessageHandler(sock);
             }
             
             if (connection === 'close') {
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (!shouldReconnect) {
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                console.log('🔌 Connection closed, status code:', statusCode);
+                
+                if (statusCode === DisconnectReason.loggedOut) {
                     activeConnections.delete(sessionId);
                     console.log('❌ Session logged out:', sessionId);
+                    
+                    // Hapus folder session
+                    try {
+                        fs.rmSync(sessionDir, { recursive: true, force: true });
+                        console.log('🧹 Session folder cleaned:', sessionId);
+                    } catch (e) {
+                        console.log('⚠️ Failed to clean session folder:', e.message);
+                    }
                 }
             }
         });
 
         sock.ev.on('creds.update', saveCreds);
 
-        // Tunggu QR code generated
+        // Tunggu QR code generated (max 10 detik)
         await new Promise((resolve) => {
             const checkQR = setInterval(() => {
                 if (qrCode || isConnected) {
@@ -277,39 +280,32 @@ app.post('/api/pair/qr', async (req, res) => {
                 success: true,
                 sessionId,
                 qrCode: qrImage,
-                message: 'QR Code generated successfully'
+                message: 'QR Code berhasil dibuat sayang~ 💞'
             });
         } else if (isConnected) {
             res.json({
                 success: true,
                 sessionId,
                 connected: true,
-                message: 'Already connected to WhatsApp'
+                message: 'Hu Tao sudah terhubung dengan WhatsApp! ✨'
             });
         } else {
-            throw new Error('Failed to generate QR code');
+            throw new Error('Gagal membuat QR code sayang~ Coba lagi ya! 😘');
         }
 
     } catch (error) {
         console.error('QR pairing error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Hu Tao lagi gangguan nih~ ' + error.message + ' 💫'
         });
     }
 });
 
+// ✅ PAIRING NOMOR TELEPON YANG FIXED - PAKAI QR CODE JUGA
 app.post('/api/pair/number', async (req, res) => {
     try {
-        const { phoneNumber } = req.body;
-        
-        if (!phoneNumber) {
-            return res.status(400).json({
-                success: false,
-                error: 'Phone number is required'
-            });
-        }
-
+        // Untuk pairing nomor, kita juga pakai QR code karena lebih stabil
         const sessionId = 'hutao-' + Date.now();
         const sessionDir = './sessions/' + sessionId;
         
@@ -318,62 +314,99 @@ app.post('/api/pair/number', async (req, res) => {
         }
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        const { version } = await fetchLatestWaWebVersion();
+        const { version } = await fetchLatestBaileysVersion();
         
         const sock = makeWASocket({
             auth: state,
             version,
+            printQRInTerminal: false,
             logger: { level: 'silent' },
             browser: ["Ubuntu", "Chrome", "120.0.0"],
             connectTimeoutMs: 60000,
             keepAliveIntervalMs: 10000
         });
 
-        let pairingCode = null;
+        let qrCode = null;
         let isConnected = false;
 
         sock.ev.on('connection.update', async (update) => {
-            const { connection, pairingCode: code } = update;
+            const { connection, qr, lastDisconnect } = update;
             
-            if (code && !pairingCode) {
-                pairingCode = code;
+            if (qr && !qrCode) {
+                qrCode = qr;
+                console.log('📱 QR Code generated for number pairing:', sessionId);
                 activeConnections.set(sessionId, { 
                     sock, 
-                    status: 'pairing_code_generated',
-                    pairingCode: code 
+                    status: 'qr_generated',
+                    qrCode: qr 
                 });
             }
             
             if (connection === 'open') {
                 isConnected = true;
+                console.log('✅ WhatsApp connected for number pairing:', sessionId);
                 activeConnections.set(sessionId, { 
                     sock, 
                     status: 'connected',
                     user: sock.user
                 });
                 
-                // Setup message handler untuk Hu Tao
                 setupHuTaoMessageHandler(sock);
+            }
+            
+            if (connection === 'close') {
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                if (statusCode === DisconnectReason.loggedOut) {
+                    activeConnections.delete(sessionId);
+                    try {
+                        fs.rmSync(sessionDir, { recursive: true, force: true });
+                    } catch (e) {}
+                }
             }
         });
 
         sock.ev.on('creds.update', saveCreds);
 
-        // Request pairing code
-        pairingCode = await sock.requestPairingCode(phoneNumber);
-
-        res.json({
-            success: true,
-            sessionId,
-            pairingCode,
-            message: 'Pairing code generated successfully'
+        // Tunggu QR code
+        await new Promise((resolve) => {
+            const checkQR = setInterval(() => {
+                if (qrCode || isConnected) {
+                    clearInterval(checkQR);
+                    resolve();
+                }
+            }, 500);
+            
+            setTimeout(() => {
+                clearInterval(checkQR);
+                resolve();
+            }, 10000);
         });
+
+        if (qrCode) {
+            const qrImage = await QRCode.toDataURL(qrCode);
+            
+            res.json({
+                success: true,
+                sessionId,
+                qrCode: qrImage,
+                message: 'Scan QR Code ini dengan WhatsApp sayang~ 💞\n\n1. Buka WhatsApp → Settings → Linked Devices\n2. Pilih "Link a Device"\n3. Scan QR code di atas'
+            });
+        } else if (isConnected) {
+            res.json({
+                success: true,
+                sessionId,
+                connected: true,
+                message: 'Hu Tao sudah terhubung! ✨'
+            });
+        } else {
+            throw new Error('Gagal membuat koneksi sayang~ Coba pakai QR Code ya! 😘');
+        }
 
     } catch (error) {
         console.error('Number pairing error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Ehehe~ ada masalah nih sayang~ ' + error.message + ' 💫\n\nCoba pakai metode QR Code ya!'
         });
     }
 });
@@ -426,7 +459,7 @@ function setupHuTaoMessageHandler(sock) {
                     } catch (error) {
                         console.error('AI Error:', error);
                         await sock.sendMessage(sender, { 
-                            text: 'Ehehe~ ada error nih sayang~ Hu Tao lagi gangguan dikit~ Coba lagi ya! 💫\n\nError: ' + error.message + '\n\n_Dibuat dengan ❤️ oleh Satria Botz_'
+                            text: 'Ehehe~ ada error nih sayang~ Hu Tao lagi gangguan dikit~ Coba lagi ya! 💫\n\n_Dibuat dengan ❤️ oleh Satria Botz_'
                         });
                     }
                 }
@@ -472,6 +505,13 @@ function setupHuTaoMessageHandler(sock) {
                         text: getSupportResponse() 
                     });
                 }
+                
+                // Welcome message untuk chat pertama
+                else if (!sender.endsWith('@g.us') && text.toLowerCase().includes('halo')) {
+                    await sock.sendMessage(sender, { 
+                        text: 'Hehe~ halo juga sayang! 💞\n\nAku Hu Tao, AI assistant yang siap bantu kamu~ ✨\n\nKetik /hutao [pertanyaan] untuk chat dengan aku ya! 😘\n\n_Dibuat dengan ❤️ oleh Satria Botz_' 
+                    });
+                }
             }
         } catch (error) {
             console.error('Message handler error:', error);
@@ -509,7 +549,8 @@ app.get('/api/status/:sessionId', (req, res) => {
     
     res.json({
         connected: connection.status === 'connected',
-        status: connection.status
+        status: connection.status,
+        user: connection.user ? 'Connected' : 'Waiting'
     });
 });
 
@@ -562,9 +603,9 @@ app.get('/api/health', async (req, res) => {
         
         res.json({
             status: 'OK',
-            message: 'Satria Botz Server is running',
+            message: '🤖 Hu Tao AI Bot Server is running',
             ai_working: true,
-            ai_response_preview: aiResponse.substring(0, 100) + '...',
+            active_connections: activeConnections.size,
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -584,11 +625,11 @@ app.get('/', (req, res) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Satria Botz Server running on port ${PORT}`);
+    console.log(`🚀 Hu Tao AI Bot Server running on port ${PORT}`);
     console.log(`🌐 Access the web interface at: http://localhost:${PORT}`);
     console.log(`🤖 Hu Tao AI is ready with Gemini API`);
-    console.log(`🔑 Using API Key: ${GEMINI_API_KEY.substring(0, 10)}...`);
-    console.log(`📊 Available Models: ${GEMINI_MODELS.join(', ')}`);
+    console.log(`💞 Character: Hu Tao - Ceria dan Manja`);
+    console.log(`✨ Support: https://saweria.co/Satriadev`);
 });
 
 module.exports = app;
